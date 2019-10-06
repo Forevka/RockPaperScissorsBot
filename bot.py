@@ -66,6 +66,10 @@ async def query_show_list(query: types.CallbackQuery, callback_data: dict):
         await bot.edit_message_text(f'You can start game i found opponent for you!\nPlease choose one from this buttons', opponent.id, opponent.message_id, reply_markup=items_kb)
 
 
+@dp.callback_query_handler(menu_cb.filter(action='start_game_bot'))
+async def query_show_list(query: types.CallbackQuery, callback_data: dict):
+    pass
+
 @dp.callback_query_handler(item_cb.filter(action='choice'))
 async def query_show_list(query: types.CallbackQuery, callback_data: dict):
     logger.info(user_games_pool.game_sessions)
@@ -95,7 +99,12 @@ async def query_show_list(query: types.CallbackQuery, callback_data: dict):
 
         user_games_pool.delete_session(callback_data["session_id"])
     else:
-        await query.message.edit_text("Waiting for you opponent")
+        play_with_bot_kb = types.InlineKeyboardMarkup(row_width=1).add(
+            types.InlineKeyboardButton(
+                "Play with bot",
+                callback_data=menu_cb.new(action='start_game_bot', difficulty=callback_data['difficulty']))
+        )
+        await query.message.edit_text("Waiting for you opponent\nIf you dont want wait play with bot", reply_markup=play_with_bot_kb)
 
 
 if __name__ == '__main__':
