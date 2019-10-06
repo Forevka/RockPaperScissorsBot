@@ -11,7 +11,7 @@ from loguru import logger
 import config
 from controllers.game_session import GameSession
 from models.item import game_modes
-from models.user import User
+from models.user import User, FakeUser
 from controllers.user_games_pool import UserGamesPool
 
 logging.basicConfig(level=logging.INFO)
@@ -52,11 +52,16 @@ async def query_show_list(query: types.CallbackQuery, callback_data: dict):
     opponent: typing.Optional[User] = user_games_pool.find_user(user)
     logger.info(opponent)
     if not opponent:
-        await query.message.edit_text('wait, i searching peple for you...')
+        play_with_bot_kb = types.InlineKeyboardMarkup(row_width=1).add(
+            types.InlineKeyboardButton(
+                "Play with bot",
+                callback_data=menu_cb.new(action='start_game_bot', difficulty=callback_data['difficulty']))
+        )
+        await query.message.edit_text('wait, i searching peple for you...\nIf you dont want wait play with bot', reply_markup=play_with_bot_kb)
     else:
 
         gs: GameSession = user_games_pool.create_game_session(
-            user, opponent, diff)
+            user, opponent, diff, False)
         items_kb = types.InlineKeyboardMarkup().add(
             *[types.InlineKeyboardButton(
                 item["name"],
@@ -68,7 +73,21 @@ async def query_show_list(query: types.CallbackQuery, callback_data: dict):
 
 @dp.callback_query_handler(menu_cb.filter(action='start_game_bot'))
 async def query_show_list(query: types.CallbackQuery, callback_data: dict):
-    pass
+    diff: int = int(callback_data['difficulty'])
+    user: User = user_games_pool.get_stored_user(query.message.message_id, query.from_user.id)
+    opponent: FakeUser = user_games_pool.find_bot(user)
+    logger.info(opponent)
+    gs: GameSession = user_games_pool.create_game_session(
+        user, opponent, diff, True)
+
+    items_kb = types.InlineKeyboardMarkup().add(
+        *[types.InlineKeyboardButton(
+            item["name"],
+            callback_data=item_cb.new(action='choice', session_id=gs.session_id, item_id=key_id, difficulty=diff)) for key_id, item in game_modes[diff]['game_items'].items()]
+    )
+    await query.message.edit_text(f'You can start game i found opponent for you!\nPlease choose one from this buttons\n' + "Attention! you play vs bot" if isinstance(opponent, FakeUser) else '', reply_markup=items_kb)
+    #await bot.edit_message_text(f'You can start game i found opponent for you!\nPlease choose one from this buttons', opponent.id, opponent.message_id, reply_markup=items_kb)
+
 
 @dp.callback_query_handler(item_cb.filter(action='choice'))
 async def query_show_list(query: types.CallbackQuery, callback_data: dict):
@@ -91,20 +110,19 @@ async def query_show_list(query: types.CallbackQuery, callback_data: dict):
                 callback_data=menu_cb.new(action='start_game', difficulty=callback_data['difficulty']))
         )
         if any(res):
-            await bot.edit_message_text(f"You won!\nYou choose <pre>{gs.winner.choice.name}</pre>\nOpponent choose <pre>{gs.defeated.choice.name}</pre>\n<b>{gs.winner.choice.description[gs.defeated.choice.id]}</b>", gs.winner.id, gs.winner.message_id, reply_markup=replay_kb)
-            await bot.edit_message_text(f"You lose :(\nYou choose <pre>{gs.defeated.choice.name}</pre>\nOpponent choose <pre>{gs.winner.choice.name}</pre>\n<b>{gs.winner.choice.description[gs.defeated.choice.id]}</b>", gs.defeated.id, gs.defeated.message_id, reply_markup=replay_kb)
+            if not gs.winner.is_bot:
+                await bot.edit_message_text(f"You won!\nYou choose <pre>{gs.winner.choice.name}</pre>\nOpponent choose <pre>{gs.defeated.choice.name}</pre>\n<b>{gs.winner.choice.description[gs.defeated.choice.id]}</b>", gs.winner.id, gs.winner.message_id, reply_markup=replay_kb)
+            if not gs.defeated.is_bot:
+                await bot.edit_message_text(f"You lose :(\nYou choose <pre>{gs.defeated.choice.name}</pre>\nOpponent choose <pre>{gs.winner.choice.name}</pre>\n<b>{gs.winner.choice.description[gs.defeated.choice.id]}</b>", gs.defeated.id, gs.defeated.message_id, reply_markup=replay_kb)
         else:
-            await bot.edit_message_text(f"It`s draw\nYou choose <pre>{gs.first.choice.name}</pre>\nOpponent choose <pre>{gs.second.choice.name}</pre>", gs.first.id, gs.first.message_id, reply_markup=replay_kb)
-            await bot.edit_message_text(f"It`s draw\nYou choose <pre>{gs.second.choice.name}</pre>\nOpponent choose <pre>{gs.first.choice.name}</pre>", gs.second.id, gs.second.message_id, reply_markup=replay_kb)
+            if not gs.first.is_bot:
+                await bot.edit_message_text(f"It`s draw\nYou choose <pre>{gs.first.choice.name}</pre>\nOpponent choose <pre>{gs.second.choice.name}</pre>", gs.first.id, gs.first.message_id, reply_markup=replay_kb)
+            if not gs.second.is_bot:
+                await bot.edit_message_text(f"It`s draw\nYou choose <pre>{gs.second.choice.name}</pre>\nOpponent choose <pre>{gs.first.choice.name}</pre>", gs.second.id, gs.second.message_id, reply_markup=replay_kb)
 
         user_games_pool.delete_session(callback_data["session_id"])
     else:
-        play_with_bot_kb = types.InlineKeyboardMarkup(row_width=1).add(
-            types.InlineKeyboardButton(
-                "Play with bot",
-                callback_data=menu_cb.new(action='start_game_bot', difficulty=callback_data['difficulty']))
-        )
-        await query.message.edit_text("Waiting for you opponent\nIf you dont want wait play with bot", reply_markup=play_with_bot_kb)
+        await query.message.edit_text("Waiting for you opponent")
 
 
 if __name__ == '__main__':

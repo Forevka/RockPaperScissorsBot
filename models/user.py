@@ -6,6 +6,7 @@ from models.item import GameItem
 
 class User:
     def __init__(self, id: int, msg_id: int, diff: int):
+        self.is_bot = False
         self.id: int = id
         self.message_id: int = msg_id
         self.difficulty: int = diff
@@ -17,3 +18,8 @@ class User:
 
     def __repr__(self):
         return str(self)
+
+class FakeUser(User):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.is_bot = True
